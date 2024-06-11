@@ -31,6 +31,17 @@ export interface ChatGPInstance {
   focus: () => void
 }
 
+const getModel = async () => {
+  const url = '/api/models'
+
+  return await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  })
+}
+
 const postChatOrQuestion = async (chat: Chat, messages: any[], input: string) => {
   const url = '/api/chat'
 

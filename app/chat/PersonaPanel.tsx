@@ -74,7 +74,7 @@ const PersonaPanel = (_props: PersonaPanelProps) => {
         px="4"
         style={{ backgroundColor: 'var(--gray-a2)' }}
       >
-        <Heading size="4">Persona Store </Heading>
+        <Heading size="4">System Prompt </Heading>
         <IconButton
           size="2"
           variant="ghost"
@@ -93,7 +93,7 @@ const PersonaPanel = (_props: PersonaPanelProps) => {
             </TextField.Slot>
             <TextField.Input
               className="flex-1"
-              placeholder="Search Persona Template"
+              placeholder="Search System Prompt Template"
               onChange={({ target }) => {
                 setSearchText(target.value)
               }}

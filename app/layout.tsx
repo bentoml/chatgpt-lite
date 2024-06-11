@@ -7,10 +7,10 @@ import '@/styles/theme-config.css'
 
 export const metadata = {
   title: {
-    default: 'ChatGPT Lite',
-    template: `%s - ChatGPT Lite`
+    default: 'OpenLLM Chat',
+    template: `%s - OpenLLM Chat`
   },
-  description: 'AI assistant powered by ChatGPT',
+  description: 'AI assistant powered by OpenLLM',
   icons: {
     icon: '/favicon.ico',
     shortcut: '/favicon-16x16.png',

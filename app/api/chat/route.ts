@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
       { content: input, role: 'user' }
     ]
 
-    const { apiUrl, apiKey, model } = getApiConfig()
+    const { apiUrl, apiKey, model } = await getApiConfig()
     const stream = await getOpenAIStream(apiUrl, apiKey, model, messagesWithHistory)
     return new NextResponse(stream, {
       headers: { 'Content-Type': 'text/event-stream' }
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-const getApiConfig = () => {
+const getApiConfig = async () => {
   const useAzureOpenAI =
     process.env.AZURE_OPENAI_API_BASE_URL && process.env.AZURE_OPENAI_API_BASE_URL.length > 0
 
@@ -59,10 +59,40 @@ const getApiConfig = () => {
     }
     apiUrl = `${apiBaseUrl}/v1/chat/completions`
     apiKey = process.env.OPENAI_API_KEY || ''
-    model = process.env.OPENAI_MODEL || 'gpt-3.5-turbo'
+    const model_ids = await getModels(`${apiBaseUrl}/v1/models`)
+    if (model_ids.length == 0) {
+      throw new Error('No models found')
+    }
+    model = model_ids[0]
   }
 
   return { apiUrl, apiKey, model }
+}
+
+const getModels = async (modelUrl: string) => {
+  const res = await fetch(modelUrl, {
+    headers: {
+      'Content-Type': 'application/json',
+      'accept': 'application/json',
+    },
+    method: 'GET'
+  })
+
+  if (res.status !== 200) {
+    const statusText = res.statusText
+    const responseBody = await res.text()
+    console.error(`OpenAI API response error: ${responseBody}`)
+    throw new Error(
+      `The OpenAI API has encountered an error with a status code of ${res.status} ${statusText}: ${responseBody}`
+    )
+  }
+
+  const model_json = await res.json()
+  let model_ids = []
+  for (let model of model_json["data"]) {
+    model_ids.push(model["id"])
+  }
+  return model_ids
 }
 
 const getOpenAIStream = async (
@@ -76,14 +106,13 @@ const getOpenAIStream = async (
   const res = await fetch(apiUrl, {
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      'api-key': `${apiKey}`
+      'accept': 'text/event-stream',
     },
     method: 'POST',
     body: JSON.stringify({
       model: model,
       frequency_penalty: 0,
-      max_tokens: 4000,
+      max_tokens: 1024,
       messages: messages,
       presence_penalty: 0,
       stream: true,

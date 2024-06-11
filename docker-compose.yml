@@ -1,13 +1,11 @@
 version: '3.8'
 
 services:
-  chatgpt-lite:
+  openllm-chat:
     build: .
     ports:
-      - "3000:3000"
+      - "3002:3002"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      - OPENAI_API_BASE_URL=
-      - OPENAI_API_KEY=
-      - AZURE_OPENAI_API_BASE_URL=
-      - AZURE_OPENAI_API_KEY=
-      - AZURE_OPENAI_DEPLOYMENT=
+      - OPENAI_API_BASE_URL=http://host.docker.internal:3000
