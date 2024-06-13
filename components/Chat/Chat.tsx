@@ -10,6 +10,7 @@ import {
   useState
 } from 'react'
 import { Flex, Heading, IconButton, ScrollArea, Tooltip } from '@radix-ui/themes'
+import { createParser, ParsedEvent, ReconnectInterval } from 'eventsource-parser'
 import ContentEditable from 'react-contenteditable'
 import toast from 'react-hot-toast'
 import { AiOutlineClear, AiOutlineLoading3Quarters, AiOutlineUnorderedList } from 'react-icons/ai'
@@ -42,21 +43,121 @@ const getModel = async () => {
   })
 }
 
-const postChatOrQuestion = async (chat: Chat, messages: any[], input: string) => {
-  const url = '/api/chat'
+export interface Message {
+  role: string
+  content: string
+}
 
-  const data = {
-    prompt: chat?.persona?.prompt,
-    messages: [...messages!],
-    input
+const postChatOrQuestion = async (chat: Chat, messages: Message[], input: string) => {
+  const url = '/v1/chat/completions'
+
+  const model_ids = await getModels('/v1/models')
+  if (model_ids.length == 0) {
+    throw new Error('No models found')
   }
 
-  return await fetch(url, {
-    method: 'POST',
+  const model = model_ids[0]
+
+  const messagesWithHistory = [
+    { content: chat?.persona?.prompt ?? '', role: 'system' },
+    ...messages,
+    { content: input, role: 'user' }
+  ]
+
+  return await getOpenAIStream(url, '', model, messagesWithHistory)
+}
+
+const getModels = async (modelUrl: string) => {
+  const res = await fetch(modelUrl, {
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'accept': 'application/json',
     },
-    body: JSON.stringify(data)
+    method: 'GET'
+  })
+
+  if (res.status !== 200) {
+    const statusText = res.statusText
+    const responseBody = await res.text()
+    console.error(`OpenAI API response error: ${responseBody}`)
+    throw new Error(
+      `The OpenAI API has encountered an error with a status code of ${res.status} ${statusText}: ${responseBody}`
+    )
+  }
+
+  const model_json = await res.json()
+  let model_ids = []
+  for (let model of model_json["data"]) {
+    model_ids.push(model["id"])
+  }
+  return model_ids
+}
+
+const getOpenAIStream = async (
+  apiUrl: string,
+  apiKey: string,
+  model: string,
+  messages: Message[]
+) => {
+  const encoder = new TextEncoder()
+  const decoder = new TextDecoder()
+  const res = await fetch(apiUrl, {
+    headers: {
+      'Content-Type': 'application/json',
+      'accept': 'text/event-stream',
+    },
+    method: 'POST',
+    body: JSON.stringify({
+      model: model,
+      frequency_penalty: 0,
+      max_tokens: 1024,
+      messages: messages,
+      presence_penalty: 0,
+      stream: true,
+      temperature: 0.5,
+      top_p: 0.95
+    })
+  })
+
+  if (res.status !== 200) {
+    const statusText = res.statusText
+    const responseBody = await res.text()
+    console.error(`OpenAI API response error: ${responseBody}`)
+    throw new Error(
+      `The OpenAI API has encountered an error with a status code of ${res.status} ${statusText}: ${responseBody}`
+    )
+  }
+
+  return new ReadableStream({
+    async start(controller) {
+      const onParse = (event: ParsedEvent | ReconnectInterval) => {
+        if (event.type === 'event') {
+          const data = event.data
+
+          if (data === '[DONE]') {
+            controller.close()
+            return
+          }
+
+          try {
+            const json = JSON.parse(data)
+            const text = json.choices[0]?.delta.content
+            const queue = encoder.encode(text)
+            controller.enqueue(queue)
+          } catch (e) {
+            controller.error(e)
+          }
+        }
+      }
+
+      const parser = createParser(onParse)
+
+      for await (const chunk of res.body as any) {
+        // An extra newline is required to make AzureOpenAI work.
+        const str = decoder.decode(chunk).replace('[DONE]\n', '[DONE]\n\n')
+        parser.feed(str)
+      }
+    }
   })
 }
 
@@ -93,62 +194,43 @@ const Chat = (props: ChatProps, ref: any) => {
         setMessage('')
         setIsLoading(true)
         try {
-          const response = await postChatOrQuestion(currentChatRef?.current!, message, input)
+          const stream = await postChatOrQuestion(currentChatRef?.current!, message, input)
 
-          if (response.ok) {
-            const data = response.body
+          const reader = stream.getReader()
+          const decoder = new TextDecoder('utf-8')
+          let done = false
+          let resultContent = ''
 
-            if (!data) {
-              throw new Error('No data')
-            }
-
-            const reader = data.getReader()
-            const decoder = new TextDecoder('utf-8')
-            let done = false
-            let resultContent = ''
-
-            while (!done) {
-              try {
-                const { value, done: readerDone } = await reader.read()
-                const char = decoder.decode(value)
-                if (char) {
-                  setCurrentMessage((state) => {
-                    if (debug) {
-                      console.log({ char })
-                    }
-                    resultContent = state + char
-                    return resultContent
-                  })
-                }
-                done = readerDone
-              } catch {
-                done = true
+          while (!done) {
+            try {
+              const { value, done: readerDone } = await reader.read()
+              const char = decoder.decode(value)
+              if (char) {
+                setCurrentMessage((state) => {
+                  if (debug) {
+                    console.log({ char })
+                  }
+                  resultContent = state + char
+                  return resultContent
+                })
               }
-            }
-            // The delay of timeout can not be 0 as it will cause the message to not be rendered in racing condition
-            setTimeout(() => {
-              if (debug) {
-                console.log({ resultContent })
-              }
-              conversation.current = [
-                ...conversation.current,
-                { content: resultContent, role: 'assistant' }
-              ]
-
-              setCurrentMessage('')
-            }, 1)
-          } else {
-            const result = await response.json()
-            if (response.status === 401) {
-              conversation.current.pop()
-              location.href =
-                result.redirect +
-                `?callbackUrl=${encodeURIComponent(location.pathname + location.search)}`
-            } else {
-              toast.error(result.error)
+              done = readerDone
+            } catch {
+              done = true
             }
           }
+          // The delay of timeout can not be 0 as it will cause the message to not be rendered in racing condition
+          setTimeout(() => {
+            if (debug) {
+              console.log({ resultContent })
+            }
+            conversation.current = [
+              ...conversation.current,
+              { content: resultContent, role: 'assistant' }
+            ]
 
+            setCurrentMessage('')
+          }, 1)
           setIsLoading(false)
         } catch (error: any) {
           console.error(error)
