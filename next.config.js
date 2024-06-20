@@ -2,20 +2,12 @@ require('path')
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
+  output: 'export',
+  basePath: '/chat',
   sassOptions: {
     // includePaths: [path.join(__dirname, 'styles')]
   },
   reactStrictMode: false,
-  async redirects() {
-    return [
-      {
-        source: '/',
-        destination: '/chat',
-        permanent: true
-      }
-    ]
-  },
   logging: {
     fetches: {
       fullUrl: true
