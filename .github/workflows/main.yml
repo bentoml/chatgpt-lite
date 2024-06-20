@@ -1,0 +1,54 @@
+name: Sync with bentoml/openllm-repo-recipe
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the current repository
+      - name: Check out repository
+        uses: actions/checkout@v2
+
+      # Step 2: Set up Node.js and install dependencies
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '>=18.17.0'
+
+      - name: Install dependencies
+        run: npm install
+
+      # Step 3: Build the project
+      - name: Build the project
+        run: npm run build
+
+      # Step 4: Check out the target repository (bentoml/openllm-repo-recipe)
+      - name: Check out target repository
+        uses: actions/checkout@v2
+        with:
+          repository: bentoml/openllm-repo-recipe
+          path: target-repo
+          token: ${{ secrets.TARGET_REPO_ACCESS_TOKEN }}
+
+      # Step 5: Copy the built files to the target repository
+      - name: Copy built files to target repository
+        run: |
+          rm -rf target-repo/vllm-chat/ui/*
+          cp -r out/* target-repo/vllm-chat/ui/
+
+      # Step 6: Commit and push the changes to the target repository
+      - name: Commit and push changes
+        run: |
+          cd target-repo
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .
+          git commit -m "Sync chat UI from main repository"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.TARGET_REPO_ACCESS_TOKEN }}
