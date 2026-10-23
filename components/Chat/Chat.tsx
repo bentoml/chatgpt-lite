@@ -71,7 +71,7 @@ const getModels = async (modelUrl: string) => {
   const res = await fetch(modelUrl, {
     headers: {
       'Content-Type': 'application/json',
-      'accept': 'application/json',
+      accept: 'application/json'
     },
     method: 'GET'
   })
@@ -87,8 +87,8 @@ const getModels = async (modelUrl: string) => {
 
   const model_json = await res.json()
   let model_ids = []
-  for (let model of model_json["data"]) {
-    model_ids.push(model["id"])
+  for (let model of model_json['data']) {
+    model_ids.push(model['id'])
   }
   return model_ids
 }
@@ -104,7 +104,7 @@ const getOpenAIStream = async (
   const res = await fetch(apiUrl, {
     headers: {
       'Content-Type': 'application/json',
-      'accept': 'text/event-stream',
+      accept: 'text/event-stream'
     },
     method: 'POST',
     body: JSON.stringify({
